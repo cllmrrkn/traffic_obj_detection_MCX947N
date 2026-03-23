@@ -17,7 +17,7 @@
 #include "ov7670.h"
 #include "fsl_lpi2c.h"
 #include "MCXN947_cm33_core0.h"
-//#include "fsl_pint.h"
+#include "fsl_pint.h"
 #include "pin_mux.h"
 
 #define CAMERA_I2C LPI2C7
@@ -39,27 +39,30 @@ static status_t OV7670_WriteReg_Direct(uint8_t reg, uint8_t value)
     return LPI2C_MasterTransferBlocking(LPI2C7, &xfer);
 }
 
-//void PINT0_IRQHandler(void)
-//{
-//	if(PINT_PinInterruptGetStatus(PINT, kPINT_PinInt0)){
-//		brightness += 10;
-//		OV7670_WriteReg_Direct(0x55U,brightness);
-//		PINT_PinInterruptClrStatus(PINT, kPINT_PinInt0);//sw3
-//	}
-//	else if(PINT_PinInterruptGetStatus(PINT, kPINT_PinInt1)){
-//		brightness -= 10;
-//		OV7670_WriteReg_Direct(0x55U,brightness);
-//		PINT_PinInterruptClrStatus(PINT, kPINT_PinInt1);//sw2
-//	}
-//}
+static void pint_callback(pint_pin_int_t pintr, pint_status_t *status)
+{
+    (void)status;
+
+    if (pintr == kPINT_PinInt0)
+    {
+        brightness += 10;
+        OV7670_WriteReg_Direct(0x55U, brightness);
+    }
+    else if (pintr == kPINT_PinInt1)
+    {
+        brightness -= 10;
+        OV7670_WriteReg_Direct(0x55U, brightness);
+    }
+}
 int main(void)
 {
     BOARD_Init();
     TIMER_Init();
-//    PINT_Init(PINT);
-//    PINT_PinInterruptConfig(PINT, kPINT_PinInt0, kPINT_PinIntEnableFallEdge);
-//    PINT_PinInterruptConfig(PINT, kPINT_PinInt1, kPINT_PinIntEnableFallEdge);
-//    EnableIRQ(PINT0_IRQn);
+    PINT_Init(PINT);
+    PINT_SetCallback(PINT, pint_callback);
+    PINT_PinInterruptConfig(PINT, kPINT_PinInt0, kPINT_PinIntEnableFallEdge);
+    PINT_PinInterruptConfig(PINT, kPINT_PinInt1, kPINT_PinIntEnableFallEdge);
+    PINT_EnableCallback(PINT);
 
 
     DEMO_PrintInfo();
