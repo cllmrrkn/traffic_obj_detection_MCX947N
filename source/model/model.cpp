@@ -26,7 +26,7 @@ limitations under the License.
 
 #include "fsl_debug_console.h"
 #include "model.h"
-#include "model_convertedfomo144.h"
+#include "model_convertedfomo144_v2.h"
 
 static const tflite::Model* s_model = nullptr;
 static tflite::MicroInterpreter* s_interpreter = nullptr;

@@ -13,10 +13,10 @@
 #include "image.h"
 #include "image_utils.h"
 #include "model.h"
-#include "output_postproc.h"
 #include "timer.h"
 #include "video.h"
 #include "fomo_post_processing.h"
+#include "object_tracker.h"
 
 extern "C" {
 
@@ -25,8 +25,8 @@ extern "C" {
 #define MODEL_IN_C   1
 #define MODEL_IN_COLOR_BGR 0
 
-#define BOX_SCORE_THRESHOLD 0.8
-#define MAX_OD_BOX_CNT  10
+#define BOX_SCORE_THRESHOLD 0.75
+#define MAX_OD_BOX_CNT  16
 
 typedef struct tagODResult_t
 {
@@ -62,25 +62,24 @@ static fomo::FomoDetection s_detResults[fomo::MAX_DETECTIONS];
 static int s_detResultCount = 0;
 
 /*******************************************************************************
- * NEW: Persistent class counters - these accumulate over time
+ * Persistent class counters - updated by tracker when objects cross line
  * Classes: 0=car, 1=heavy_vehicle, 2=person, 3=two_wheeler
  ******************************************************************************/
 #define NUM_CLASSES 4
 static volatile uint32_t s_persistentClassCounts[NUM_CLASSES] = {0, 0, 0, 0};
 
-// Flag to track if we already counted detections this frame
-// (prevents counting the same object multiple times per frame)
-static volatile uint8_t s_frameProcessed = 0;
+static tracker::ObjectTracker s_tracker;
 
-// Optional: Reset counters function (call from button/command if needed)
+// Reset counters function (call from button/command if needed)
 void ResetClassCounters(void)
 {
+    s_tracker.Reset();
     for (int i = 0; i < NUM_CLASSES; i++) {
         s_persistentClassCounts[i] = 0;
     }
 }
 
-// NEW: Function called by display.c to get current counts
+// Function called by display.c to get current counts
 void GetClassCounts(int* counts)
 {
     for (int i = 0; i < NUM_CLASSES; i++) {
@@ -209,63 +208,6 @@ void Rgb565StridedToGray(const uint16_t* pIn, int srcW,
     }
 }
 
-void Rgb565StridedToRgb888(const uint16_t* pIn, int srcW,
-    int wndW, int wndH, int wndX0, int wndY0,
-    uint8_t* p888, int stride, uint8_t isSub128)
-{
-    const uint16_t* pSrc;
-    uint8_t* p888out = p888;
-
-    for (int y = wndY0; y < wndH; y += stride)
-    {
-        pSrc = pIn + srcW * y + wndX0;
-
-        for (int x = 0; x < wndW; x += stride)
-        {
-            uint16_t datIn = *pSrc;
-            pSrc += stride;
-
-            uint8_t r = (datIn >> 8) & 0xF8;
-            uint8_t g = (datIn >> 3) & 0xFC;
-            uint8_t b = (datIn << 3) & 0xF8;
-
-            if (isSub128) { r ^= 0x80; g ^= 0x80; b ^= 0x80; }
-
-            *p888out++ = r;
-            *p888out++ = g;
-            *p888out++ = b;
-        }
-    }
-}
-
-void Rgb565StridedToBgr888(const uint16_t* pIn, int srcW,
-    int wndW, int wndH, int wndX0, int wndY0,
-    uint8_t* p888, int stride, uint8_t isSub128)
-{
-    const uint16_t* pSrc;
-    uint8_t* p888out = p888;
-
-    for (int y = wndY0; y < wndH; y += stride)
-    {
-        pSrc = pIn + srcW * y + wndX0;
-
-        for (int x = 0; x < wndW; x += stride)
-        {
-            uint16_t datIn = *pSrc;
-            pSrc += stride;
-
-            uint8_t r = (datIn >> 8) & 0xF8;
-            uint8_t g = (datIn >> 3) & 0xFC;
-            uint8_t b = (datIn << 3) & 0xF8;
-
-            if (isSub128) { r ^= 0x80; g ^= 0x80; b ^= 0x80; }
-
-            *p888out++ = b;
-            *p888out++ = g;
-            *p888out++ = r;
-        }
-    }
-}
 
 /*******************************************************************************
  * Slice Copy to Model Input
@@ -378,12 +320,6 @@ const char* GetBriefString(void)
     return sz;
 }
 
-void MODEL_ODPrintResult(const ODResult_t *p, int retCnt)
-{
-    // Debug output disabled - can enable if needed
-    // PRINTF("Found boxes count %d\r\n", retCnt);
-}
-
 /*******************************************************************************
  * Main Inference Loop
  ******************************************************************************/
@@ -468,12 +404,8 @@ void face_det()
             s_odRetCnt = 0;
         }
 
-        // Process detections and update persistent counters
+        // Process detections for display boxes
         s_odRetCnt = 0;
-
-        // Temporary counts for this frame (to avoid double-counting)
-        int frameClassCounts[NUM_CLASSES] = {0, 0, 0, 0};
-
         for (int i = 0; i < s_detResultCount && s_odRetCnt < MAX_OD_BOX_CNT; i++) {
             const fomo::FomoDetection& det = s_detResults[i];
 
@@ -491,31 +423,23 @@ void face_det()
             s_odRets[s_odRetCnt].y1    = (int16_t)(camCy - halfBoxY);
             s_odRets[s_odRetCnt].y2    = (int16_t)(camCy + halfBoxY);
             s_odRets[s_odRetCnt].score = det.score;
-            s_odRets[s_odRetCnt].label = det.cls - 1;  // Convert 1-4 to 0-3
-
-            // Count this detection for the frame
-            int classIdx = det.cls - 1;  // FOMO uses 1-4, we use 0-3
-            if (classIdx >= 0 && classIdx < NUM_CLASSES) {
-                frameClassCounts[classIdx]++;
-            }
+            s_odRets[s_odRetCnt].label = det.cls - 1;
 
             s_odRetCnt++;
         }
 
-        // Update persistent counters with this frame's detections
-        for (int c = 0; c < NUM_CLASSES; c++) {
-            if (frameClassCounts[c] > 0) {
-                s_persistentClassCounts[c] += frameClassCounts[c];
+        // Update tracker - counts only when objects cross the horizontal line
+        s_tracker.Update(s_detResults, s_detResultCount);
 
-                // Cap at reasonable maximum (e.g., 99999)
-                if (s_persistentClassCounts[c] > 99999) {
-                    s_persistentClassCounts[c] = 99999;
-                }
-            }
+        // Get counts from tracker (only increments on line crossing)
+        const tracker::TrackerStats& stats = s_tracker.GetStats();
+        for (int c = 0; c < NUM_CLASSES; c++) {
+            // FOMO classes are 1-4, tracker stores by class index
+            s_persistentClassCounts[c] = stats.by_class[c + 1].total;
         }
 
+        // Update display buffer
         if (s_odRetCnt > 0) {
-            MODEL_ODPrintResult(s_odRets, s_odRetCnt);
             memcpy(s_displayRets, s_odRets, sizeof(ODResult_t) * s_odRetCnt);
             s_displayRetCnt = s_odRetCnt;
         }

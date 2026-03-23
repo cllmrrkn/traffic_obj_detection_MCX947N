@@ -989,6 +989,78 @@ void BOARD_InitLCDFXIOPins(void)
                      | PORT_PCR_IBE(PCR_IBE_ibe1));
 }
 
+void BOARD_InitBUTTONsPins(void)
+{
+    /* Enables the clock for GPIO0: Enables clock */
+    CLOCK_EnableClock(kCLOCK_Gpio0);
+    /* Enables the clock for PORT0 controller: Enables clock */
+    CLOCK_EnableClock(kCLOCK_Port0);
+    CLOCK_EnableClock(kCLOCK_InputMux);
+    CLOCK_EnableClock(kCLOCK_Pint);
+
+    gpio_pin_config_t SW3_config = {
+        .pinDirection = kGPIO_DigitalInput,
+        .outputLogic = 0U
+    };
+    /* Initialize GPIO functionality on pin PIO0_6 (pin C14)  */
+    GPIO_PinInit(BOARD_INITBUTTONSPINS_SW3_GPIO, BOARD_INITBUTTONSPINS_SW3_PIN, &SW3_config);
+
+    gpio_pin_config_t SW2_config = {
+        .pinDirection = kGPIO_DigitalInput,
+        .outputLogic = 0U
+    };
+    /* Initialize GPIO functionality on pin PIO0_23 (pin B7)  */
+    GPIO_PinInit(BOARD_INITBUTTONSPINS_SW2_GPIO, BOARD_INITBUTTONSPINS_SW2_PIN, &SW2_config);
+
+    const port_pin_config_t SW2 = {/* Internal pull-up/down resistor is disabled */
+                                   .pullSelect = kPORT_PullDisable,
+                                   /* Low internal pull resistor value is selected. */
+                                   .pullValueSelect = kPORT_LowPullResistor,
+                                   /* Fast slew rate is configured */
+                                   .slewRate = kPORT_FastSlewRate,
+                                   /* Passive input filter is disabled */
+                                   .passiveFilterEnable = kPORT_PassiveFilterDisable,
+                                   /* Open drain output is disabled */
+                                   .openDrainEnable = kPORT_OpenDrainDisable,
+                                   /* Low drive strength is configured */
+                                   .driveStrength = kPORT_LowDriveStrength,
+                                   /* Pin is configured as PIO0_23 */
+                                   .mux = kPORT_MuxAlt0,
+                                   /* Digital input enabled */
+                                   .inputBuffer = kPORT_InputBufferEnable,
+                                   /* Digital input is not inverted */
+                                   .invertInput = kPORT_InputNormal,
+                                   /* Pin Control Register fields [15:0] are not locked */
+                                   .lockRegister = kPORT_UnlockRegister};
+    /* PORT0_23 (pin B7) is configured as PIO0_23 */
+    PORT_SetPinConfig(BOARD_INITBUTTONSPINS_SW2_PORT, BOARD_INITBUTTONSPINS_SW2_PIN, &SW2);
+
+    const port_pin_config_t SW3 = {/* Internal pull-up resistor is enabled */
+                                   .pullSelect = kPORT_PullUp,
+                                   /* Low internal pull resistor value is selected. */
+                                   .pullValueSelect = kPORT_LowPullResistor,
+                                   /* Fast slew rate is configured */
+                                   .slewRate = kPORT_FastSlewRate,
+                                   /* Passive input filter is disabled */
+                                   .passiveFilterEnable = kPORT_PassiveFilterDisable,
+                                   /* Open drain output is disabled */
+                                   .openDrainEnable = kPORT_OpenDrainDisable,
+                                   /* Low drive strength is configured */
+                                   .driveStrength = kPORT_LowDriveStrength,
+                                   /* Pin is configured as PIO0_6 */
+                                   .mux = kPORT_MuxAlt0,
+                                   /* Digital input enabled */
+                                   .inputBuffer = kPORT_InputBufferEnable,
+                                   /* Digital input is not inverted */
+                                   .invertInput = kPORT_InputNormal,
+                                   /* Pin Control Register fields [15:0] are not locked */
+                                   .lockRegister = kPORT_UnlockRegister};
+    /* PORT0_6 (pin C14) is configured as PIO0_6 */
+    PORT_SetPinConfig(BOARD_INITBUTTONSPINS_SW3_PORT, BOARD_INITBUTTONSPINS_SW3_PIN, &SW3);
+    INPUTMUX->PINTSEL[0] = 6U;//sw3
+    INPUTMUX->PINTSEL[1] = 23U;//sw2
+}
+
 /***********************************************************************************************************************
  * EOF
  **********************************************************************************************************************/

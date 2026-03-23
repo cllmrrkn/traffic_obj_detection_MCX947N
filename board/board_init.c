@@ -16,6 +16,7 @@ void BOARD_Init()
     BOARD_InitLCDFXIOPins();
     BOARD_InitBootClocks();
     BOARD_InitDebugConsole();
+    BOARD_InitBUTTONsPins();
 
 
     /* Enable caching of flash memory */

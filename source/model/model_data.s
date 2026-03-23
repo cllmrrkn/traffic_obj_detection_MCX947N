@@ -40,7 +40,7 @@
 
 
 npu_model_data:
-	.incbin "../source/model/model_convertedfomo144.tflite"
+	.incbin "../source/model/model_convertedfomo144_v2.tflite"
 npu_model_data_end:
 
 od_image_data:

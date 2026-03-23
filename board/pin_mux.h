@@ -208,6 +208,36 @@ void BOARD_InitLCDFXIOPins(void);
  *
  */
 void BOARD_InitPins(void);
+void BOARD_InitBUTTONsPins(void);
+
+/*! @name PORT0_6 (coord C14), P0_6/J23[7]/SW3[3]/SW3[4]
+  @{ */
+
+/* Symbols to be used with GPIO driver */
+#define BOARD_INITBUTTONSPINS_SW3_GPIO GPIO0               /*!<@brief GPIO peripheral base pointer */
+#define BOARD_INITBUTTONSPINS_SW3_GPIO_PIN 6U              /*!<@brief GPIO pin number */
+#define BOARD_INITBUTTONSPINS_SW3_GPIO_PIN_MASK (1U << 6U) /*!<@brief GPIO pin mask */
+
+/* Symbols to be used with PORT driver */
+#define BOARD_INITBUTTONSPINS_SW3_PORT PORT0               /*!<@brief PORT peripheral base pointer */
+#define BOARD_INITBUTTONSPINS_SW3_PIN 6U                   /*!<@brief PORT pin number */
+#define BOARD_INITBUTTONSPINS_SW3_PIN_MASK (1U << 6U)      /*!<@brief PORT pin mask */
+                                                           /* @} */
+
+/*! @name PORT0_23 (coord B7), P0_23/SJ9[1]/SW2[3]/SW2[4]
+  @{ */
+
+/* Symbols to be used with GPIO driver */
+#define BOARD_INITBUTTONSPINS_SW2_GPIO GPIO0                /*!<@brief GPIO peripheral base pointer */
+#define BOARD_INITBUTTONSPINS_SW2_GPIO_PIN 23U              /*!<@brief GPIO pin number */
+#define BOARD_INITBUTTONSPINS_SW2_GPIO_PIN_MASK (1U << 23U) /*!<@brief GPIO pin mask */
+
+/* Symbols to be used with PORT driver */
+#define BOARD_INITBUTTONSPINS_SW2_PORT PORT0                /*!<@brief PORT peripheral base pointer */
+#define BOARD_INITBUTTONSPINS_SW2_PIN 23U                   /*!<@brief PORT pin number */
+#define BOARD_INITBUTTONSPINS_SW2_PIN_MASK (1U << 23U)      /*!<@brief PORT pin mask */
+                                                            /* @} */
+
 
 #if defined(__cplusplus)
 }
