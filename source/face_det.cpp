@@ -321,6 +321,26 @@ const char* GetBriefString(void)
 }
 
 /*******************************************************************************
+ * Latency Measurement
+ ******************************************************************************/
+typedef struct {
+    uint32_t io_transfer_us;     // Time waiting for camera frame
+    uint32_t preprocess_us;      // memcpy + MODEL_ConvertInput
+    uint32_t inference_us;       // MODEL_RunInference (NPU)
+    uint32_t postprocess_us;     // FOMO decode + detection conversion
+    uint32_t tracking_us;        // Tracker update + stats copy
+    uint32_t total_us;           // End-to-end per frame
+} LatencyStats_t;
+
+static LatencyStats_t s_latency = {0};
+
+// Expose latency stats for external use (e.g. display)
+const LatencyStats_t* GetLatencyStats(void)
+{
+    return &s_latency;
+}
+
+/*******************************************************************************
  * Main Inference Loop
  ******************************************************************************/
 void face_det()
@@ -334,11 +354,18 @@ void face_det()
     uint8_t* outputData;
     size_t arenaSize;
 
+    // --- Measure initialization time (one-shot) ---
+    auto initStart = TIMER_GetTimeInUS();
+
     if (MODEL_Init() != kStatus_Success)
     {
         PRINTF("Failed initializing model");
         for (;;) {}
     }
+
+    auto initEnd = TIMER_GetTimeInUS();
+    PRINTF("\r\n[LATENCY] Initialization: %d us (%d ms)\r\n",
+           (int)(initEnd - initStart), (int)((initEnd - initStart) / 1000));
 
     size_t usedSize = MODEL_GetArenaUsedBytes(&arenaSize);
     PRINTF("\r\n%d/%d kB (%0.2f%%) tensor arena used\r\n",
@@ -375,10 +402,23 @@ void face_det()
         s_detResultCount,
         postProcessParams);
 
+    uint32_t frameCount = 0;
+    auto ioStart = TIMER_GetTimeInUS();
+
     while (1)
     {
+        // --- IO transfer: measure time waiting for camera frame ---
         if (g_isImgBufReady == 0)
             continue;
+
+        auto ioEnd = TIMER_GetTimeInUS();
+        s_latency.io_transfer_us = (uint32_t)(ioEnd - ioStart);
+
+        // --- Total frame timer starts here ---
+        auto frameStart = ioEnd;
+
+        // --- Preprocessing: memcpy + input conversion ---
+        auto preprocStart = TIMER_GetTimeInUS();
 
         int H = (int)inputDims.data[1];
         int W = (int)inputDims.data[2];
@@ -392,11 +432,18 @@ void face_det()
         MODEL_ConvertInput(inputData, &inputDims, inputType);
         g_isImgBufReady = 0;
 
-        auto startTime = TIMER_GetTimeInUS();
-        MODEL_RunInference();
-        auto endTime = TIMER_GetTimeInUS();
+        auto preprocEnd = TIMER_GetTimeInUS();
+        s_latency.preprocess_us = (uint32_t)(preprocEnd - preprocStart);
 
-        s_infUs = (uint32_t)(endTime - startTime);
+        // --- Inference ---
+        auto infStart = TIMER_GetTimeInUS();
+        MODEL_RunInference();
+        auto infEnd = TIMER_GetTimeInUS();
+        s_latency.inference_us = (uint32_t)(infEnd - infStart);
+        s_infUs = s_latency.inference_us;
+
+        // --- Post-processing: FOMO decode + detection conversion ---
+        auto postStart = TIMER_GetTimeInUS();
 
         s_detResultCount = 0;
         if (!postProcess.DoPostProcess()) {
@@ -428,6 +475,12 @@ void face_det()
             s_odRetCnt++;
         }
 
+        auto postEnd = TIMER_GetTimeInUS();
+        s_latency.postprocess_us = (uint32_t)(postEnd - postStart);
+
+        // --- Tracking ---
+        auto trackStart = TIMER_GetTimeInUS();
+
         // Update tracker - counts only when objects cross the horizontal line
         s_tracker.Update(s_detResults, s_detResultCount);
 
@@ -438,6 +491,14 @@ void face_det()
             s_persistentClassCounts[c] = stats.by_class[c + 1].total;
         }
 
+        auto trackEnd = TIMER_GetTimeInUS();
+        s_latency.tracking_us = (uint32_t)(trackEnd - trackStart);
+
+        // --- Total frame time (end-to-end including IO wait) ---
+        s_latency.total_us = s_latency.io_transfer_us + s_latency.preprocess_us
+                           + s_latency.inference_us + s_latency.postprocess_us
+                           + s_latency.tracking_us;
+
         // Update display buffer
         if (s_odRetCnt > 0) {
             memcpy(s_displayRets, s_odRets, sizeof(ODResult_t) * s_odRetCnt);
@@ -446,6 +507,20 @@ void face_det()
         else {
             s_displayRetCnt = 0;
         }
+
+        // --- Print latency breakdown every frame ---
+        frameCount++;
+        PRINTF("[LATENCY] #%u | IO:%u  Pre:%u  Inf:%u  Post:%u  Track:%u  Total:%u us\r\n",
+               (unsigned)frameCount,
+               (unsigned)s_latency.io_transfer_us,
+               (unsigned)s_latency.preprocess_us,
+               (unsigned)s_latency.inference_us,
+               (unsigned)s_latency.postprocess_us,
+               (unsigned)s_latency.tracking_us,
+               (unsigned)s_latency.total_us);
+
+        // Reset IO wait timer for next frame
+        ioStart = TIMER_GetTimeInUS();
     }
 }
 
